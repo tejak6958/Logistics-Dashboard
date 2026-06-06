@@ -1,0 +1,191 @@
+### This script builds your multi-table relational layer. It uses Regex to clean up messy data strings, aggregates the results in a View, 
+####and uses a Stored Procedure to write the cleaned payload back into your data warehouse table.
+-- ============================================================================
+-- 1. BASE OPERATIONAL TABLES (MySQL 8.0+ Compatible)
+-- ============================================================================
+
+DROP TABLE IF EXISTS warehouse_analytics_hub;
+DROP TABLE IF EXISTS operational_incidents;
+DROP TABLE IF EXISTS raw_shipments;
+DROP TABLE IF EXISTS carrier_manifests;
+
+CREATE TABLE carrier_manifests (
+    carrier_id INT PRIMARY KEY,
+    carrier_name VARCHAR(100),
+    shipping_zone VARCHAR(10)
+) ENGINE=InnoDB;
+
+CREATE TABLE raw_shipments (
+    shipment_id INT PRIMARY KEY,
+    carrier_id INT,
+    metadata_string TEXT, 
+    raw_tracking_code VARCHAR(100),
+    freight_cost DECIMAL(12, 2),
+    FOREIGN KEY (carrier_id) REFERENCES carrier_manifests(carrier_id)
+) ENGINE=InnoDB;
+
+CREATE TABLE warehouse_analytics_hub (
+    sync_id INT AUTO_INCREMENT PRIMARY KEY, -- Changed from SERIAL to AUTO_INCREMENT
+    cleaned_customer_id INT,
+    extracted_tracking_number VARCHAR(50),
+    carrier_name VARCHAR(100),
+    freight_cost DECIMAL(12, 2),
+    mongo_incident_count INT,
+    sync_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+CREATE TABLE operational_incidents (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    raw_data JSON,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+
+-- ============================================================================
+-- 2. THE VIEW: Completely translated to MySQL 8.0 REGEXP_SUBSTR
+-- ============================================================================
+
+-- ============================================================================
+-- 2. THE VIEW: Universally Compatible with ALL MySQL 8.0 Minor Versions
+-- ============================================================================
+
+CREATE OR REPLACE VIEW v_clean_premium_logistics AS
+SELECT 
+    s.shipment_id,
+    s.freight_cost,
+    c.carrier_name,
+    
+    -- REGEX 1 FIX: Extracts "ID: 1234" first, then strips away the "ID:" text prefix to isolate the number
+    CAST(REGEXP_REPLACE(REGEXP_SUBSTR(s.metadata_string, 'ID:\\s*[0-9]+'), 'ID:\\s*', '') AS UNSIGNED) AS cleaned_customer_id,
+    
+    -- REGEX 2 FIX: Grabs the trailing portion starting with '#' and strips the '#' symbol away
+    REGEXP_REPLACE(REGEXP_SUBSTR(s.raw_tracking_code, '#[0-9]+-[A-Z]+'), '#', '') AS extracted_tracking_number
+
+FROM raw_shipments s
+JOIN carrier_manifests c ON s.carrier_id = c.carrier_id
+-- Filters for tracking format and premium cost threshold
+WHERE s.raw_tracking_code REGEXP '^ERR-TRK#[0-9]+-[A-Z]+$' 
+  AND s.freight_cost > 2000.00;
+
+
+
+-- ============================================================================
+-- 3. THE STORED PROCEDURE: Executes full payload load into target hub
+-- ============================================================================
+
+DELIMITER $$
+
+DROP PROCEDURE IF EXISTS sp_execute_warehouse_load$$
+
+CREATE PROCEDURE sp_execute_warehouse_load(
+    IN p_batch_id INT,
+    OUT p_rows_migrated INT,
+    OUT p_log_message TEXT
+)
+BEGIN
+    DECLARE sql_error_code CHAR(5) DEFAULT '00000';
+    DECLARE sql_error_msg TEXT;
+    
+    -- Error Handler: Catch exception and rollback
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        GET DIAGNOSTICS CONDITION 1 
+            sql_error_code = RETURNED_SQLSTATE, 
+            sql_error_msg = MESSAGE_TEXT;
+            
+        ROLLBACK;
+        SET p_rows_migrated = -1;
+        SET p_log_message = CONCAT('ETL Failed for batch ', p_batch_id, '. Error State: ', sql_error_code, '. Message: ', sql_error_msg);
+    END;
+
+    START TRANSACTION;
+    
+    -- ETL WRITE ACTION: Merges view data with aggregated JSON incident metrics
+    INSERT INTO warehouse_analytics_hub (cleaned_customer_id, extracted_tracking_number, carrier_name, freight_cost, mongo_incident_count)
+    SELECT 
+        v.cleaned_customer_id,
+        v.extracted_tracking_number,
+        v.carrier_name,
+        v.freight_cost,
+        COALESCE(mongo.incident_count, 0) AS mongo_incident_count
+    FROM v_clean_premium_logistics v
+    LEFT JOIN (
+        -- Inline subquery calculating incident counts directly from JSON array fields
+        SELECT 
+            raw_data->>'$.extracted_tracking_number' AS tracking_num,
+            JSON_LENGTH(raw_data->'$.incident_logs') AS incident_count
+        FROM operational_incidents
+    ) mongo ON v.extracted_tracking_number = mongo.tracking_num;
+
+    -- Capture exactly how many rows were inserted into the analytical hub
+    SET p_rows_migrated = ROW_COUNT();
+    
+    COMMIT;
+    
+    SET p_log_message = CONCAT('ETL execution batch ', p_batch_id, ' finalized. ', p_rows_migrated, ' cleaned data records committed.');
+END$$
+
+DELIMITER ;
+
+
+-- ============================================================================
+-- 4. SEED DATA GENERATION (25-30 Balanced Records)
+-- ============================================================================
+
+-- A. Seed Carrier Manifests (5 carriers spanning regions)
+INSERT INTO carrier_manifests (carrier_id, carrier_name, shipping_zone) VALUES
+(10, 'Apex Global Express', 'ZONE-A'),
+(20, 'Vanguard Freight', 'ZONE-B'),
+(30, 'Titanium Logistics', 'ZONE-C'),
+(40, 'SwiftCargo Inc', 'ZONE-A'),
+(50, 'Beacon Shippers', 'ZONE-D');
+
+-- B. Seed Raw Shipments (30 entries with a mix of valid/invalid matching patterns)
+INSERT INTO raw_shipments (shipment_id, carrier_id, metadata_string, raw_tracking_code, freight_cost) VALUES
+(101, 10, 'ID: 5001 | Status: Pending | Route: NY->LA', 'ERR-TRK#98234-XYZ', 2450.00), -- Passes
+(102, 20, 'ID:5002 | Status: Delayed | Route: TX->FL', 'ERR-TRK#11223-ABC', 3100.50),  -- Passes
+(103, 30, 'ID:   5003 | Status: Sorted | Route: WA->OR', 'ERR-TRK#44556-DEF', 1200.00),-- Fails (< 2000 cost)
+(104, 10, 'ID: 5004 | Status: In-Transit | Route: IL->MI', 'INVALID-TRK#123', 4500.00),-- Fails (Bad tracking format)
+(105, 40, 'ID: 5005 | Status: Shipped | Route: CA->NV', 'ERR-TRK#77889-GHI', 2150.00),  -- Passes
+(106, 50, 'ID:5006 | Status: Delivered | Route: GA->NC', 'ERR-TRK#99001-JKL', 5200.00),  -- Passes
+(107, 20, 'ID: 5007 | Status: Pending | Route: OH->PA', 'ERR-TRK#55443-MNO', 1800.75),  -- Fails (< 2000 cost)
+(108, 30, 'ID: 5008 | Status: Cancelled | Route: MA->NY', 'ERR-TRK#22110-PQR', 2900.00), -- Passes
+(109, 40, 'ID:5009 | Status: Lost | Route: CO->UT', 'ERR-TRK#66778-STU', 6100.00),      -- Passes
+(110, 10, 'Malformed String No ID Field Here', 'ERR-TRK#88990-VWX', 3400.00),           -- Fails (Regex fails to extract ID)
+(111, 50, 'ID: 5011 | Status: Shipped | Route: AZ->NM', 'ERR-TRK#33445-YZA', 2050.00),  -- Passes
+(112, 10, 'ID: 5012 | Status: Dispatched | Route: KY->TN', 'ERR-TRK#12345-BCB', 2220.00),-- Passes
+(113, 20, 'ID:5013 | Status: In-Transit', 'ERR-TRK#54321-CDC', 950.00),                  -- Fails (< 2000 cost)
+(114, 30, 'ID: 5014 | Status: Held', 'ERR-TRK#98765-ECE', 4100.00),                      -- Passes
+(115, 40, 'ID: 5015 | Status: Shipped', 'TRK-ERR-8832-XYZ', 3200.00),                    -- Fails (Bad tracking prefix)
+(116, 50, 'ID:5016 | Status: Route Change', 'ERR-TRK#11111-FCF', 2800.00),               -- Passes
+(117, 10, 'ID: 5017 | Status: Delayed', 'ERR-TRK#22222-GCG', 4900.00),                   -- Passes
+(118, 20, 'ID: 5018 | Status: Processing', 'ERR-TRK#33333-HCH', 1500.00),                -- Fails (< 2000 cost)
+(119, 30, 'ID:5019 | Status: Out for Delivery', 'ERR-TRK#44444-ICI', 2005.00),           -- Passes
+(120, 40, 'ID: 5020 | Status: Completed', 'ERR-TRK#55555-JCJ', 7800.00),                 -- Passes
+(121, 50, 'ID: 5021 | Status: Shipped', 'ERR-TRK#66666-KCK', 2400.00),                   -- Passes
+(122, 10, 'ID:5022 | Status: Delayed', 'ERR-TRK#77777-LCL', 2010.50),                    -- Passes
+(123, 20, 'ID: 5023 | Status: Damaged', 'ERR-TRK#88888-MCM', 1300.00),                   -- Fails (< 2000 cost)
+(124, 30, 'ID: 5024 | Status: Processing', 'ERR-TRK#99999-NCN', 3150.00),                -- Passes
+(125, 40, 'ID:5025 | Status: Hold at Location', 'ERR-TRK#12121-PCP', 2250.00),           -- Passes
+(126, 50, 'ID: 5026 | Status: Returned', 'ERR-TRK#23232-QCQ', 4300.00),                  -- Passes
+(127, 10, 'ID: 5027 | Status: Shipped', 'ERR-TRK#34343-RCR', 1900.00),                   -- Fails (< 2000 cost)
+(128, 20, 'ID:5028 | Status: Transferred', 'ERR-TRK#45454-SCS', 2670.00),                -- Passes
+(129, 30, 'ID: 5029 | Status: Awaiting Pickup', 'ERR-TRK#56565-TCT', 3890.00),           -- Passes
+(130, 40, 'ID: 5030 | Status: Completed', 'ERR-TRK#67676-UCU', 5110.00);                 -- Passes
+
+-- C. Seed Operational Incidents (25 structured NoSQL JSON rows matching extracted targets)
+INSERT INTO operational_incidents (raw_data) VALUES 
+('{"extracted_tracking_number": "98234-XYZ", "incident_logs": [{"type": "Customs Delay", "severity": "High", "resolved": false}, {"type": "Weather Exception", "severity": "Medium", "resolved": true}]}'),
+('{"extracted_tracking_number": "11223-ABC", "incident_logs": [{"type": "Damaged Packaging", "severity": "Low", "resolved": true}]}'),
+('{"extracted_tracking_number": "77889-GHI", "incident_logs": []}'),
+('{"extracted_tracking_number": "99001-JKL", "incident_logs": [{"type": "Documentation Miss", "severity": "Medium", "resolved": false}]}'),
+('{"extracted_tracking_number": "22110-PQR", "incident_logs": [{"type": "Route Delay", "severity": "Low", "resolved": true}, {"type": "Address Correction", "severity": "Low", "resolved": true}]}'),
+('{"extracted_tracking_number": "66778-STU", "incident_logs": [{"type": "Sort Facility Jam", "severity": "High", "resolved": true}]}'),
+('{"extracted_tracking_number": "33445-YZA", "incident_logs": [{"type": "Weather Exception", "severity": "Medium", "resolved": false}]}'),
+('{"extracted_tracking_number": "12345-BCB", "incident_logs": []}'),
+('{"extracted_tracking_number": "98765-ECE", "incident_logs": [{"type": "Customs Inspection", "severity": "High", "resolved": false}]}'),
+('{"extracted_tracking_number": "11111-FCF", "incident_logs": [{"type": "Damaged Item", "severity": "High", "resolved": false}, {"type": "Return to Sender", "severity": "High", "resolved": false}]}'),
+('{"extracted_tracking_number": "22222-GCG", "incident_logs": [{"type": "Label Unreadable", "severity": "Low", "resolved": true}]}'),
+('{"extracted_tracking_number": "44444-ICI", "incident_logs": []}')
+
+

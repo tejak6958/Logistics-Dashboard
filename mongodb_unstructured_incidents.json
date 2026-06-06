@@ -1,0 +1,143 @@
+[
+  {
+    "extracted_tracking_number": "98234-XYZ",
+    "incident_logs": [
+      { "type": "Customs Delay", "severity": "High", "resolved": false },
+      { "type": "Weather Exception", "severity": "Medium", "resolved": true }
+    ]
+  },
+  {
+    "extracted_tracking_number": "11223-ABC",
+    "incident_logs": [
+      { "type": "Damaged Packaging", "severity": "Low", "resolved": true }
+    ]
+  },
+  {
+    "extracted_tracking_number": "77889-GHI",
+    "incident_logs": []
+  },
+  {
+    "extracted_tracking_number": "99001-JKL",
+    "incident_logs": [
+      { "type": "Documentation Miss", "severity": "Medium", "resolved": false }
+    ]
+  },
+  {
+    "extracted_tracking_number": "22110-PQR",
+    "incident_logs": [
+      { "type": "Route Delay", "severity": "Low", "resolved": true },
+      { "type": "Address Correction", "severity": "Low", "resolved": true }
+    ]
+  },
+  {
+    "extracted_tracking_number": "66778-STU",
+    "incident_logs": [
+      { "type": "Sort Facility Jam", "severity": "High", "resolved": true }
+    ]
+  },
+  {
+    "extracted_tracking_number": "33445-YZA",
+    "incident_logs": [
+      { "type": "Weather Exception", "severity": "Medium", "resolved": false }
+    ]
+  },
+  {
+    "extracted_tracking_number": "12345-BCB",
+    "incident_logs": []
+  },
+  {
+    "extracted_tracking_number": "98765-ECE",
+    "incident_logs": [
+      { "type": "Customs Inspection", "severity": "High", "resolved": false }
+    ]
+  },
+  {
+    "extracted_tracking_number": "11111-FCF",
+    "incident_logs": [
+      { "type": "Damaged Item", "severity": "High", "resolved": false },
+      { "type": "Return to Sender", "severity": "High", "resolved": false }
+    ]
+  },
+  {
+    "extracted_tracking_number": "22222-GCG",
+    "incident_logs": [
+      { "type": "Label Unreadable", "severity": "Low", "resolved": true }
+    ]
+  },
+  {
+    "extracted_tracking_number": "44444-ICI",
+    "incident_logs": []
+  },
+  {
+    "extracted_tracking_number": "55555-JCJ",
+    "incident_logs": [
+      { "type": "Terminal Mechanical Issue", "severity": "High", "resolved": true }
+    ]
+  },
+  {
+    "extracted_tracking_number": "66666-KCK",
+    "incident_logs": [
+      { "type": "Refused by Recipient", "severity": "Medium", "resolved": false }
+    ]
+  },
+  {
+    "extracted_tracking_number": "77777-LCL",
+    "incident_logs": []
+  },
+  {
+    "extracted_tracking_number": "99999-NCN",
+    "incident_logs": [
+      { "type": "Misrouted Bag", "severity": "Medium", "resolved": true }
+    ]
+  },
+  {
+    "extracted_tracking_number": "12121-PCP",
+    "incident_logs": [
+      { "type": "Sorting Error", "severity": "Low", "resolved": true }
+    ]
+  },
+  {
+    "extracted_tracking_number": "23232-QCQ",
+    "incident_logs": [
+      { "type": "Stolen from Porch", "severity": "High", "resolved": false }
+    ]
+  },
+  {
+    "extracted_tracking_number": "45454-SCS",
+    "incident_logs": []
+  },
+  {
+    "extracted_tracking_number": "56565-TCT",
+    "incident_logs": [
+      { "type": "Holiday Volume Overflow", "severity": "Low", "resolved": true }
+    ]
+  },
+  {
+    "extracted_tracking_number": "67676-UCU",
+    "incident_logs": [
+      { "type": "Contraband Check", "severity": "High", "resolved": true }
+    ]
+  },
+  {
+    "extracted_tracking_number": "44556-DEF",
+    "incident_logs": [
+      { "type": "Minor Scratches", "severity": "Low", "resolved": true }
+    ]
+  },
+  {
+    "extracted_tracking_number": "55443-MNO",
+    "incident_logs": [
+      { "type": "Lost In Transit", "severity": "High", "resolved": false }
+    ]
+  },
+  {
+    "extracted_tracking_number": "54321-CDC",
+    "incident_logs": []
+  },
+  {
+    "extracted_tracking_number": "34343-RCR",
+    "incident_logs": [
+      { "type": "Failed Delivery Attempt", "severity": "Low", "resolved": true }
+    ]
+  }
+]

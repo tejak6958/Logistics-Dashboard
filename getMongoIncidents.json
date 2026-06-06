@@ -1,0 +1,13 @@
+{
+  "_comment": "Retool Query: getMongoIncidents | Resource: mongo_incidents_db | Collection: operational_incidents | Action: Find | Trigger: runs after getCleanLogistics",
+  "filter": {
+    "extracted_tracking_number": {
+      "$in": "{{ getCleanLogistics.data.map(r => r.extracted_tracking_number) }}"
+    }
+  },
+  "projection": {
+    "extracted_tracking_number": 1,
+    "incident_logs": 1,
+    "_id": 0
+  }
+}

@@ -350,7 +350,7 @@ I help turn raw data into clear, simple insights that are easy to understand and
 - Excel — data cleaning, analysis, quick dashboards
 - MySQL & MongoDB — cloud databases on Railway & Atlas
 
-**Connect:** [LinkedIn](https://linkedin.com/in/YOUR_PROFILE) · [Portfolio](https://your-portfolio.com)
+**Connect:** [LinkedIn](www.linkedin.com/in/k-teja) 
 
 ---
 

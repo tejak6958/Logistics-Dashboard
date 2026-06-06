@@ -354,4 +354,4 @@ I help turn raw data into clear, simple insights that are easy to understand and
 
 ---
 
-<p align="center">Built with clarity in mind · Data should explain itself</p>
+
